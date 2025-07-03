@@ -19,3 +19,12 @@ keyboard_type = InlineKeyboardMarkup(
             [InlineKeyboardButton(text="Month", callback_data="type:month")]
         ]
     )
+
+
+def get_keyboard_subs(user_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Купить подписку", url=f"https://web.telegram.org")], #заменить на ссылку для оплаты
+            [InlineKeyboardButton(text="Я оплатил", callback_data="subs")]
+        ]
+    )

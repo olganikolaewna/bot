@@ -19,7 +19,9 @@ async def create_table():
             CREATE TABLE IF NOT EXISTS users (
                 id SERIAL PRIMARY KEY,
                 user_id BIGINT UNIQUE,
-                username TEXT
+                username TEXT,
+                is_active BOOLEAN DEFAULT FALSE,
+                trial_until TIMESTAMP
             );
             
             CREATE TABLE IF NOT EXISTS links (
@@ -49,22 +51,51 @@ async def reg_user(user_id: int, username: str):
     conn = None
     try:
         conn = await create_db_connection()
+        trial_until = datetime.utcnow()  + timedelta(days=7)
         try:
             await conn.execute('''
-                INSERT INTO users (user_id, username)
-                VALUES ($1, $2)
+                INSERT INTO users (user_id, username, trial_until)
+                VALUES ($1, $2, $3)
                 ON CONFLICT (user_id) DO NOTHING
-            ''', user_id, username)
+            ''', user_id, username, trial_until)
         except:
             await create_table()
             await conn.execute('''
-                INSERT INTO users (user_id, username)
-                VALUES ($1, $2)
+                INSERT INTO users (user_id, username, trial_until)
+                VALUES ($1, $2, $3)
                 ON CONFLICT (user_id) DO NOTHING
-            ''', user_id, username)
+            ''', user_id, username, trial_until)
     finally:
         if conn:
             await conn.close()
+
+async def is_user_active(user_id: int) -> bool:
+    conn = await create_db_connection()
+    try:
+        row = await conn.fetchrow('''
+            SELECT is_active, trial_until FROM users WHERE user_id = $1
+        ''', user_id)
+
+        if not row:
+            return False
+        if row['is_active']:
+            return True
+        if row['trial_until'] and row['trial_until'] > datetime.utcnow():
+            return True
+        return False
+    finally:
+        await conn.close()
+
+
+async def activate_subs(user_id: int, day: int=30):
+    conn = await create_db_connection()
+    try:
+        await conn.execute('''
+            UPDATE users SET is_active = TRUE,
+            trial_until = $2 WHERE user_id = $1
+        ''', user_id, datetime.utcnow() + timedelta(days=day))
+    finally:
+        await conn.close()
 
 
 def gen_short_code(url: str) -> str:

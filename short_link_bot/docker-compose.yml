@@ -39,6 +39,14 @@ services:
     restart: on-failure
     environment:
       - PYTHONUNBUFFERED=1
+  
+  payment:
+    build:
+      context: ./web
+      dockerfile: Dockerfile.web
+    command: python web/payment_server.py
+    ports:
+      - "5005:5005"
 
 volumes:
   postgres_data:

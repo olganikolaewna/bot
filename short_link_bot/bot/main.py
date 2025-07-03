@@ -7,11 +7,8 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 import bot.database as db
-from bot.keyboards import main, keyboard_type
+from bot.keyboards import main, keyboard_type, get_keyboard_subs
 import os
-
-import matplotlib.pyplot as plt
-from io import BytesIO
 
 
 
@@ -25,7 +22,7 @@ async def start(message: Message):
         user_id = user.id,
         username = user.username
     )
-    await message.answer("Hello!", reply_markup = main())
+    await message.answer("Здравствуйте, я бот коротких ссылок", reply_markup = main())
 
 
 
@@ -35,11 +32,18 @@ class LinkCreate(StatesGroup):
 
 @dp.message(F.text == "Создать ссылку")
 async def ask_link(message: Message, state: FSMContext):
+    if not await db.is_user_active(message.from_user.id):
+        keyboard = get_keyboard_subs(message.from_user.id)
+        await message.answer("У вас нет доступа. Продлите подписку", reply_markup = keyboard)
+        await state.clear()
+        return 
     await message.answer("Отправьте мне сыылку, которую хотите сократить:")
     await state.set_state(LinkCreate.waiting_for_url)
 
+
 @dp.message(LinkCreate.waiting_for_url)
 async def create_link(message: Message, state: FSMContext):
+
     url = message.text.strip()
     if not url.startswith("http"):
         await message.answer("Это не ссылка, отправьте сслыку")
@@ -49,7 +53,44 @@ async def create_link(message: Message, state: FSMContext):
     await message.answer(f"Готово! Ваша ссылка:\n{short_url}")
     await state.clear()
 
+#Профиль
+@dp.message(Command("profile"))
+async def profile(message: Message):
+    from datetime import datetime, timedelta
+    conn = await db.create_db_connection()
+    try:
+        row = await conn.fetchrow("SELECT is_active, trial_until FROM users WHERE user_id = $1", message.from_user.id)
+        if not row:
+            await message.answer("Вы не зарегистрированы.")
+            return
 
+        trial = row["trial_until"]
+        active = row["is_active"]
+
+        msg = "<b>Ваш профиль:</b>\n"
+        if active:
+            msg += "Подписка активна\n"
+        elif trial and trial > datetime.utcnow():
+            msg += f"Пробный период до {trial.strftime('%Y-%m-%d %H:%M')}\n"
+        else:
+            msg += "Подписка неактивна и пробный период истёк.\n"
+
+        await message.answer(msg)
+    finally:
+        await conn.close()
+
+
+
+#Подписка
+@dp.callback_query(F.data == "subs")
+async def buy_subs(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    try:
+        await db.activate_subs(user_id, day=30)
+        await callback.message.answer("Подписка продлена успешно!")
+    except Exception as e:
+        await callback.message.answer("Произошла ошибка при активации подписки")
+    
 
 
 #Список ссылок
